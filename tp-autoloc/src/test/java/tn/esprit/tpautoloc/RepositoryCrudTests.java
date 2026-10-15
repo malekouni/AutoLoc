@@ -26,20 +26,6 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Atelier 3 - Partie 2 : tests des JpaRepository.
- *
- * Suivi des traces dans la console :
- * - chaque test commence par une bannière "TEST : ..." ;
- * - chaque appel au repository est annoncé par une ligne "ETAPE n/N" juste AVANT son exécution :
- *   le SQL Hibernate (insert, select, update, delete, count) s'affiche donc entre deux lignes ETAPE ;
- * - "->" donne la valeur retournée, "OK" confirme qu'une assertion est passée ;
- * - si un test échoue, la dernière ligne ETAPE affichée indique l'appel fautif.
- *
- * Les attributs simples suivent l'Atelier 1 ; les associations suivent l'Atelier 2.
- * Les noms des champs d'association (agence dans Vehicule et Employe, vehicule dans Maintenance)
- * sont supposés : corrigez-les dans les méthodes creerXxx() si besoin.
- */
 @SpringBootTest
 class RepositoryCrudTests {
 
