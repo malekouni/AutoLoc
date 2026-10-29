@@ -21,6 +21,11 @@ public class ContratServiceImpl implements IContratService {
                     "Un nouveau contrat ne doit pas avoir d'identifiant");
         }
         verifierRegles(contrat);
+        // Assure la cohérence bidirectionnelle : chaque paiement doit référencer son contrat
+        // pour que la contrainte NOT NULL sur contrat_id soit respectée lors du save en cascade.
+        if (contrat.getPaiements() != null) {
+            contrat.getPaiements().forEach(p -> p.setContrat(contrat));
+        }
         return contratRepository.save(contrat);
     }
 

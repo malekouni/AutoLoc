@@ -31,6 +31,7 @@ public class Paiement {
     private ModePaiement modePaiement;
 
     @JsonIgnore
-    @ManyToOne
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "contrat_id", nullable = false)
     private Contrat contrat;
 }
