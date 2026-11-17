@@ -3,51 +3,66 @@ package tn.esprit.tpautoloc.service.impl;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import tn.esprit.tpautoloc.domain.Agence;
 import tn.esprit.tpautoloc.domain.Vehicule;
 import tn.esprit.tpautoloc.exception.ResourceNotFoundException;
+import tn.esprit.tpautoloc.repository.IAgenceRepository;
 import tn.esprit.tpautoloc.repository.IVehiculeRepository;
 import tn.esprit.tpautoloc.service.IVehiculeService;
+import tn.esprit.tpautoloc.web.dto.VehiculeDto;
+import tn.esprit.tpautoloc.web.mapper.VehiculeMapper;
 
 @Service
 @RequiredArgsConstructor
+@Transactional
 public class VehiculeServiceImpl implements IVehiculeService {
 
     private final IVehiculeRepository vehiculeRepository;
+    private final IAgenceRepository agenceRepository;
+    private final VehiculeMapper vehiculeMapper;
 
     @Override
-    public Vehicule create(Vehicule vehicule) {
-        if (vehicule.getIdVehicule() != null) {
-            throw new IllegalArgumentException(
-                    "Un nouveau véhicule ne doit pas avoir d'identifiant");
+    public VehiculeDto create(VehiculeDto dto) {
+        if (dto.getIdVehicule() != null) {
+            throw new IllegalArgumentException("Un nouveau véhicule ne doit pas avoir d'identifiant");
         }
-        verifierRegles(vehicule);
-        return vehiculeRepository.save(vehicule);
+        Vehicule vehicule = vehiculeMapper.toEntity(dto);
+        if (dto.getIdAgence() != null) {
+            Agence agence = agenceRepository.findById(dto.getIdAgence())
+                    .orElseThrow(() -> new ResourceNotFoundException("Agence", dto.getIdAgence()));
+            vehicule.setAgence(agence);
+        }
+        return vehiculeMapper.toDto(vehiculeRepository.save(vehicule));
     }
 
     @Override
-    public Vehicule findById(Long id) {
-        return vehiculeRepository.findById(id)
+    @Transactional(readOnly = true)
+    public VehiculeDto findById(Long id) {
+        return vehiculeMapper.toDto(
+                vehiculeRepository.findById(id)
+                        .orElseThrow(() -> new ResourceNotFoundException("Vehicule", id)));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<VehiculeDto> findAll() {
+        return vehiculeRepository.findAll().stream()
+                .map(vehiculeMapper::toDto)
+                .toList();
+    }
+
+    @Override
+    public VehiculeDto update(Long id, VehiculeDto dto) {
+        Vehicule existant = vehiculeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Vehicule", id));
-    }
-
-    @Override
-    public List<Vehicule> findAll() {
-        return vehiculeRepository.findAll();
-    }
-
-    @Override
-    public Vehicule update(Long id, Vehicule vehicule) {
-        Vehicule existant = findById(id);
-        verifierRegles(vehicule);
-        // Recopie des attributs modifiables uniquement : ni l'identifiant ni les associations
-        // (leur gestion est l'objet du chapitre 9).
-        existant.setImmatriculation(vehicule.getImmatriculation());
-        existant.setMarque(vehicule.getMarque());
-        existant.setModele(vehicule.getModele());
-        existant.setCategorie(vehicule.getCategorie());
-        existant.setTarifJournalier(vehicule.getTarifJournalier());
-        existant.setStatut(vehicule.getStatut());
-        return vehiculeRepository.save(existant);
+        existant.setImmatriculation(dto.getImmatriculation());
+        existant.setMarque(dto.getMarque());
+        existant.setModele(dto.getModele());
+        existant.setCategorie(dto.getCategorie());
+        existant.setTarifJournalier(dto.getTarifJournalier());
+        existant.setStatut(dto.getStatut());
+        return vehiculeMapper.toDto(vehiculeRepository.save(existant));
     }
 
     @Override
@@ -58,9 +73,24 @@ public class VehiculeServiceImpl implements IVehiculeService {
         vehiculeRepository.deleteById(id);
     }
 
-    private void verifierRegles(Vehicule vehicule) {
-        if (vehicule.getTarifJournalier() != null && vehicule.getTarifJournalier().signum() < 0) {
-            throw new IllegalArgumentException("Le tarif journalier ne peut pas être négatif");
+    @Override
+    public void affecterVehiculeAAgence(Long vehiculeId, Long agenceId) {
+        Vehicule vehicule = vehiculeRepository.findById(vehiculeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Vehicule", vehiculeId));
+        Agence agence = agenceRepository.findById(agenceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Agence", agenceId));
+        vehicule.setAgence(agence);
+        vehiculeRepository.save(vehicule);
+    }
+
+    @Override
+    public void desaffecterVehiculeDeAgence(Long vehiculeId) {
+        Vehicule vehicule = vehiculeRepository.findById(vehiculeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Vehicule", vehiculeId));
+        if (vehicule.getAgence() == null) {
+            throw new IllegalStateException("Le véhicule " + vehiculeId + " n'est rattaché à aucune agence");
         }
+        vehicule.setAgence(null);
+        vehiculeRepository.save(vehicule);
     }
 }

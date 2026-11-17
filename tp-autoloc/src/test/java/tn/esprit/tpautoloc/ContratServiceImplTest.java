@@ -9,12 +9,14 @@ import tn.esprit.tpautoloc.domain.Contrat;
 import tn.esprit.tpautoloc.exception.ResourceNotFoundException;
 import tn.esprit.tpautoloc.repository.IContratRepository;
 import tn.esprit.tpautoloc.service.impl.ContratServiceImpl;
+import tn.esprit.tpautoloc.web.dto.ContratDto;
+import tn.esprit.tpautoloc.web.mapper.ContratMapper;
 
 import java.math.BigDecimal;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -23,12 +25,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * Test unitaire du service Contrat : SANS Spring et SANS base de données.
- *
- * Il illustre l'intérêt de l'injection par constructeur : on fabrique le service avec "new"
- * en lui passant un repository factice (mock), ce qui est impossible avec une injection par attribut.
- *
- * Hypothèses sur l'entité Contrat (à adapter si besoin) : setIdContrat(Long) et
- * setMontantTotal(BigDecimal) générés par Lombok.
+ * Mis à jour pour utiliser les DTOs introduits à l'Atelier 7.
  */
 @ExtendWith(MockitoExtension.class)
 class ContratServiceImplTest {
@@ -36,25 +33,36 @@ class ContratServiceImplTest {
     @Mock
     private IContratRepository contratRepository;
 
+    @Mock
+    private ContratMapper contratMapper;
+
     private ContratServiceImpl contratService;
 
     @BeforeEach
     void creerLeService() {
-        // Aucun conteneur Spring : le "new" est écrit ici, et la dépendance est fournie à la main.
-        contratService = new ContratServiceImpl(contratRepository);
+        contratService = new ContratServiceImpl(contratRepository, contratMapper);
     }
 
-    private Contrat contrat(Long id, String montant) {
-        Contrat contrat = new Contrat();
-        contrat.setIdContrat(id);
-        contrat.setMontantTotal(new BigDecimal(montant));
-        return contrat;
+    /** Crée un ContratDto de test. */
+    private ContratDto dto(Long id, String montant) {
+        return ContratDto.builder()
+                .idContrat(id)
+                .montantTotal(montant == null ? null : new BigDecimal(montant))
+                .build();
+    }
+
+    /** Crée un Contrat entité (retourné par le mock du repository). */
+    private Contrat entite(Long id, String montant) {
+        Contrat c = new Contrat();
+        c.setIdContrat(id);
+        c.setMontantTotal(montant == null ? null : new BigDecimal(montant));
+        return c;
     }
 
     @Test
     void createRefuseUnIdentifiantNonNull() {
         System.out.println("[TEST] create() avec un id deja renseigne -> IllegalArgumentException attendue");
-        Contrat avecId = contrat(5L, "500");
+        ContratDto avecId = dto(5L, "500");
 
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
                 () -> contratService.create(avecId));
@@ -67,7 +75,7 @@ class ContratServiceImplTest {
     @Test
     void createRefuseUnMontantNegatif() {
         System.out.println("[TEST] create() avec un montant negatif -> IllegalArgumentException attendue");
-        Contrat negatif = contrat(null, "-1");
+        ContratDto negatif = dto(null, "-1");
 
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
                 () -> contratService.create(negatif));
@@ -80,13 +88,19 @@ class ContratServiceImplTest {
     @Test
     void createEnregistreUnContratValide() {
         System.out.println("[TEST] create() avec un contrat valide -> save() appele une fois");
-        Contrat valide = contrat(null, "500");
-        when(contratRepository.save(valide)).thenReturn(valide);
+        ContratDto valide = dto(null, "500");
+        Contrat entite = entite(1L, "500");
+        ContratDto retour = dto(1L, "500");
 
-        Contrat resultat = contratService.create(valide);
+        when(contratMapper.toEntity(valide)).thenReturn(entite);
+        when(contratRepository.save(entite)).thenReturn(entite);
+        when(contratMapper.toDto(entite)).thenReturn(retour);
 
-        assertSame(valide, resultat);
-        verify(contratRepository).save(valide);
+        ContratDto resultat = contratService.create(valide);
+
+        assertNotNull(resultat);
+        assertEquals(1L, resultat.getIdContrat());
+        verify(contratRepository).save(entite);
         System.out.println("   OK  contrat enregistre");
     }
 
@@ -105,19 +119,20 @@ class ContratServiceImplTest {
     @Test
     void updateChargeLEntiteExistantePuisRecopie() {
         System.out.println("[TEST] update() charge l'existant, recopie le montant, puis save()");
-        Contrat existant = contrat(1L, "100");
-        Contrat donnees = contrat(null, "250");
+        Contrat existant = entite(1L, "100");
+        ContratDto donnees = dto(null, "250");
+        ContratDto retour = dto(1L, "250");
+
         when(contratRepository.findById(1L)).thenReturn(Optional.of(existant));
         when(contratRepository.save(existant)).thenReturn(existant);
+        when(contratMapper.toDto(existant)).thenReturn(retour);
 
-        Contrat resultat = contratService.update(1L, donnees);
+        ContratDto resultat = contratService.update(1L, donnees);
 
-        assertSame(existant, resultat);
         assertEquals(1L, resultat.getIdContrat());
         assertEquals(0, new BigDecimal("250").compareTo(resultat.getMontantTotal()));
         verify(contratRepository).save(existant);
-        verify(contratRepository, never()).save(donnees);
-        System.out.println("   OK  l'entite chargee a ete mise a jour, l'objet recu n'a jamais ete sauvegarde");
+        System.out.println("   OK  l'entite chargee a ete mise a jour");
     }
 
     @Test

@@ -1,17 +1,21 @@
 package tn.esprit.tpautoloc.service;
 
 import java.util.List;
-import tn.esprit.tpautoloc.domain.Employe;
+import tn.esprit.tpautoloc.web.dto.EmployeDto;
 
 public interface IEmployeService {
 
-    Employe create(Employe employe);
+    EmployeDto create(EmployeDto dto);
 
-    Employe findById(Long id);
+    EmployeDto findById(Long id);
 
-    List<Employe> findAll();
+    List<EmployeDto> findAll();
 
-    Employe update(Long id, Employe employe);
+    EmployeDto update(Long id, EmployeDto dto);
 
     void deleteById(Long id);
+
+    void affecterEmployeAAgence(Long employeId, Long agenceId);
+
+    void desaffecterEmployeDeAgence(Long employeId);
 }

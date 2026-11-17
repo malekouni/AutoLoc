@@ -3,48 +3,65 @@ package tn.esprit.tpautoloc.service.impl;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import tn.esprit.tpautoloc.domain.Contrat;
 import tn.esprit.tpautoloc.exception.ResourceNotFoundException;
 import tn.esprit.tpautoloc.repository.IContratRepository;
 import tn.esprit.tpautoloc.service.IContratService;
+import tn.esprit.tpautoloc.web.dto.ContratDto;
+import tn.esprit.tpautoloc.web.mapper.ContratMapper;
 
 @Service
 @RequiredArgsConstructor
+@Transactional
 public class ContratServiceImpl implements IContratService {
 
     private final IContratRepository contratRepository;
+    private final ContratMapper contratMapper;
 
     @Override
-    public Contrat create(Contrat contrat) {
-        if (contrat.getIdContrat() != null) {
-            throw new IllegalArgumentException(
-                    "Un nouveau contrat ne doit pas avoir d'identifiant");
+    public ContratDto create(ContratDto dto) {
+        if (dto.getIdContrat() != null) {
+            throw new IllegalArgumentException("Un nouveau contrat ne doit pas avoir d'identifiant");
         }
-        verifierRegles(contrat);
-        return contratRepository.save(contrat);
+        if (dto.getMontantTotal() != null && dto.getMontantTotal().signum() < 0) {
+            throw new IllegalArgumentException("Le montant total ne peut pas être négatif");
+        }
+        Contrat contrat = contratMapper.toEntity(dto);
+        // Rétablir la relation bidirectionnelle si des paiements sont fournis
+        if (dto.getPaiements() != null) {
+            contrat.getPaiements().forEach(p -> p.setContrat(contrat));
+        }
+        return contratMapper.toDto(contratRepository.save(contrat));
     }
 
     @Override
-    public Contrat findById(Long id) {
-        return contratRepository.findById(id)
+    @Transactional(readOnly = true)
+    public ContratDto findById(Long id) {
+        return contratMapper.toDto(
+                contratRepository.findById(id)
+                        .orElseThrow(() -> new ResourceNotFoundException("Contrat", id)));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ContratDto> findAll() {
+        return contratRepository.findAll().stream()
+                .map(contratMapper::toDto)
+                .toList();
+    }
+
+    @Override
+    public ContratDto update(Long id, ContratDto dto) {
+        Contrat existant = contratRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Contrat", id));
-    }
-
-    @Override
-    public List<Contrat> findAll() {
-        return contratRepository.findAll();
-    }
-
-    @Override
-    public Contrat update(Long id, Contrat contrat) {
-        Contrat existant = findById(id);
-        verifierRegles(contrat);
-        // Recopie des attributs modifiables uniquement : ni l'identifiant ni les associations
-        // (leur gestion est l'objet du chapitre 9).
-        existant.setDateSignature(contrat.getDateSignature());
-        existant.setMontantTotal(contrat.getMontantTotal());
-        existant.setValide(contrat.isValide());
-        return contratRepository.save(existant);
+        if (dto.getMontantTotal() != null && dto.getMontantTotal().signum() < 0) {
+            throw new IllegalArgumentException("Le montant total ne peut pas être négatif");
+        }
+        existant.setDateSignature(dto.getDateSignature());
+        existant.setMontantTotal(dto.getMontantTotal());
+        existant.setValide(dto.isValide());
+        return contratMapper.toDto(contratRepository.save(existant));
     }
 
     @Override
@@ -53,11 +70,5 @@ public class ContratServiceImpl implements IContratService {
             throw new ResourceNotFoundException("Contrat", id);
         }
         contratRepository.deleteById(id);
-    }
-
-    private void verifierRegles(Contrat contrat) {
-        if (contrat.getMontantTotal() != null && contrat.getMontantTotal().signum() < 0) {
-            throw new IllegalArgumentException("Le montant total ne peut pas être négatif");
-        }
     }
 }

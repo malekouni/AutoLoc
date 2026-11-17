@@ -1,59 +1,80 @@
 package tn.esprit.tpautoloc.service.impl;
 
-import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import tn.esprit.tpautoloc.domain.Client;
 import tn.esprit.tpautoloc.domain.Reservation;
+import tn.esprit.tpautoloc.domain.Vehicule;
 import tn.esprit.tpautoloc.domain.enums.StatutReservation;
 import tn.esprit.tpautoloc.exception.ResourceNotFoundException;
+import tn.esprit.tpautoloc.repository.IClientRepository;
 import tn.esprit.tpautoloc.repository.IReservationRepository;
+import tn.esprit.tpautoloc.repository.IVehiculeRepository;
 import tn.esprit.tpautoloc.service.IReservationService;
 import tn.esprit.tpautoloc.service.observer.ReservationSubject;
+import tn.esprit.tpautoloc.web.dto.ReservationRequestDTO;
+import tn.esprit.tpautoloc.web.dto.ReservationResponseDTO;
+import tn.esprit.tpautoloc.web.mapper.ReservationMapper;
 
 @Service
 @RequiredArgsConstructor
+@Transactional
 public class ReservationServiceImpl implements IReservationService {
 
     private static final Logger log = LoggerFactory.getLogger(ReservationServiceImpl.class);
 
     private final IReservationRepository reservationRepository;
+    private final IClientRepository clientRepository;
+    private final IVehiculeRepository vehiculeRepository;
+    private final ReservationMapper reservationMapper;
     private final ReservationSubject reservationSubject;
 
     @Override
-    public Reservation create(Reservation reservation) {
-        if (reservation.getIdReservation() != null) {
-            throw new IllegalArgumentException(
-                    "Une nouvelle réservation ne doit pas avoir d'identifiant");
-        }
-        verifierRegles(reservation);
-        return reservationRepository.save(reservation);
+    public ReservationResponseDTO create(ReservationRequestDTO dto) {
+        Client client = clientRepository.findById(dto.getClientId())
+                .orElseThrow(() -> new ResourceNotFoundException("Client", dto.getClientId()));
+        Vehicule vehicule = vehiculeRepository.findById(dto.getVehiculeId())
+                .orElseThrow(() -> new ResourceNotFoundException("Vehicule", dto.getVehiculeId()));
+
+        Reservation reservation = new Reservation();
+        reservation.setClient(client);
+        reservation.setVehicule(vehicule);
+        reservation.setDateDebut(dto.getDateDebut());
+        reservation.setDateFin(dto.getDateFin());
+        reservation.setStatut(StatutReservation.CONFIRMEE);
+
+        Reservation saved = reservationRepository.save(reservation);
+        reservationSubject.notifierConfirmation(saved);
+        return reservationMapper.toDto(saved);
     }
 
     @Override
-    public Reservation findById(Long id) {
-        return reservationRepository.findById(id)
+    @Transactional(readOnly = true)
+    public ReservationResponseDTO findById(Long id) {
+        return reservationMapper.toDto(
+                reservationRepository.findById(id)
+                        .orElseThrow(() -> new ResourceNotFoundException("Reservation", id)));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ReservationResponseDTO> findAll() {
+        return reservationRepository.findAll().stream()
+                .map(reservationMapper::toDto)
+                .toList();
+    }
+
+    @Override
+    public ReservationResponseDTO update(Long id, ReservationRequestDTO dto) {
+        Reservation existant = reservationRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Reservation", id));
-    }
-
-    @Override
-    public List<Reservation> findAll() {
-        return reservationRepository.findAll();
-    }
-
-    @Override
-    public Reservation update(Long id, Reservation reservation) {
-        Reservation existant = findById(id);
-        verifierRegles(reservation);
-        // Recopie des attributs modifiables uniquement : ni l'identifiant ni les associations
-        // (leur gestion est l'objet du chapitre 9).
-        existant.setDateDebut(reservation.getDateDebut());
-        existant.setDateFin(reservation.getDateFin());
-        existant.setStatut(reservation.getStatut());
-        return reservationRepository.save(existant);
+        if (dto.getDateDebut() != null) existant.setDateDebut(dto.getDateDebut());
+        if (dto.getDateFin() != null)   existant.setDateFin(dto.getDateFin());
+        return reservationMapper.toDto(reservationRepository.save(existant));
     }
 
     @Override
@@ -68,38 +89,20 @@ public class ReservationServiceImpl implements IReservationService {
     // Méthodes métier Observer (Atelier 6)
     // -------------------------------------------------------------------------
 
-    /**
-     * Crée une réservation pour un client et notifie tous les observateurs
-     * (email, SMS, statistiques…) via le patron Observer.
-     */
-    public Reservation creerReservation(Client client) {
+    public ReservationResponseDTO creerReservation(Client client) {
         Reservation reservation = new Reservation();
         reservation.setClient(client);
-        reservation.setDateDebut(LocalDate.now());
         reservation.setStatut(StatutReservation.CONFIRMEE);
-        // Déclenche le process métier via le pattern Observer
         reservationSubject.notifierConfirmation(reservation);
-        return reservation;
+        return reservationMapper.toDto(reservation);
     }
 
-    /**
-     * Annule une réservation existante et notifie tous les observateurs.
-     */
-    public Reservation annulerReservation(Reservation reservation) {
+    public ReservationResponseDTO annulerReservation(Reservation reservation) {
         reservation.setStatut(StatutReservation.ANNULEE);
         log.info("Réservation #{} annulée pour le client {}",
                 reservation.getIdReservation(),
                 reservation.getClient().getEmail());
         reservationSubject.notifierAnnulation(reservation);
-        return reservation;
-    }
-
-    // -------------------------------------------------------------------------
-
-    private void verifierRegles(Reservation reservation) {
-        if (reservation.getDateDebut() != null && reservation.getDateFin() != null
-                && reservation.getDateFin().isBefore(reservation.getDateDebut())) {
-            throw new IllegalArgumentException("La date de fin ne peut pas être antérieure à la date de début");
-        }
+        return reservationMapper.toDto(reservation);
     }
 }
